@@ -3,10 +3,21 @@
 
 pragma solidity ^0.8.0;
 
+import "hardhat/console.sol";
+
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./libs/Versioning.sol";
+
+abstract contract LockableContract {
+    // for checking if owner is the same owner
+    function owner() public view virtual returns (address);
+
+    // for locking previous contract
+    function lock() public virtual;
+}
 
 /**
  * Pointer Contract
@@ -18,11 +29,19 @@ import "./libs/Versioning.sol";
  */
 abstract contract Pointer is Ownable {
     using SafeMath for uint256;
+    using Address for address;
 
     using Versioning for Versioning.Version;
     Versioning.Version private version;
 
-    address[] private _addresses;
+    modifier isContract(address _address) {
+        require(_address.isContract(), "Address is not for a contract");
+        require(
+            LockableContract(_address).owner() == owner(),
+            "Caller is not the owner"
+        );
+        _;
+    }
 
     event AddressTransferred(
         uint256 indexed index,
@@ -30,11 +49,14 @@ abstract contract Pointer is Ownable {
         address indexed newAddress
     );
 
-    constructor(address _address) {
+    address[] private _addresses;
+
+    constructor(address _address) isContract(_address) {
         _addresses.push(_address);
         emit AddressTransferred(_addresses.length.sub(1), address(0), _address);
-
         version.upgrade("0.0.1");
+
+        console.log("initilized 0.0.1,", _address);
     }
 
     /**
@@ -44,7 +66,10 @@ abstract contract Pointer is Ownable {
     function transferAddress(address newAddress, string memory versionDetail)
         public
         onlyOwner
+        isContract(newAddress)
     {
+        LockableContract(addr()).lock();
+
         _addresses.push(newAddress);
         emit AddressTransferred(
             _addresses.length.sub(1),
